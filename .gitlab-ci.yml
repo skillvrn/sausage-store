@@ -1,0 +1,8 @@
+include:
+  - gitlab/.gitlab-ci-back.yml
+  - gitlab/.gitlab-ci-front.yml
+
+stages:
+  - build
+  - notify
+  - test
