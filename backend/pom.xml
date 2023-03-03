@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.yandex.practicum.devops</groupId>
     <artifactId>sausage-store</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>${version.application}</version>
     <name>sausage-store</name>
     <description>Backend for sausage-store</description>
     <properties>
@@ -116,5 +116,14 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- connect Nexus repository -->
+    <distributionManagement>
+        <repository>
+            <id>sausage-store</id>
+            <name>sausage-store-kuznetsov-danil-backend</name>
+            <url>${env.NEXUS_REPO_URL}/sausage-store-kuznetsov-danil-backend/</url>
+        </repository>
+    </distributionManagement>
 
 </project>

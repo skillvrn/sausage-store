@@ -1,0 +1,28 @@
+[Unit]
+Description=Backend for Sausage-store
+After=syslog.target network.target var-jarservice.mount logs.mount
+Documentation=https://gitlab.praktikum-services.ru/std-014-40/sausage-store
+
+[Service]
+Type=simple
+User=jarservice
+Group=jarusers
+Environment=REPORT_PATH=/var/www-data/htdocs/
+Environment=LOG_PATH=/log
+WorkingDirectory=/var/jarservice
+PIDFile=/var/jarservice/sausage-store.pid
+StandardOutput=file:/logs/out.log
+StandardError=append:/logs/out-error.log
+Restart=always
+ExecStart=/usr/bin/java \
+-Dmyserver.basePath='/var/jarservice' \
+-Dmyserver.bindAddr='127.0.0.1' \
+-Dmyserver.bindPort='8080' \
+-Dmyserver.hostName='std-014-40.praktikum-services.tech' \
+-jar '/var/jarservice/sausage-store.jar'
+ExecStop=/usr/bin/kill -15 $MAINPID
+ExecReload=/usr/bin/kill -HUP $MAINPID
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

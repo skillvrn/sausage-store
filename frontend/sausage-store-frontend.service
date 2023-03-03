@@ -1,0 +1,22 @@
+[Unit]
+Description=Frontend for Sausage-Store
+After=syslog.target network.target
+Documentation=https://gitlab.praktikum-services.ru/std-014-40/sausage-store
+
+[Service]
+SuccessExitStatus=143
+Type=simple
+EnvironmentFile=/etc/systemd/system/sausage-store-frontend.env
+WorkingDirectory=/var/www-data
+PIDFile=/var/www-data/sausage-store-front.pid
+User=front-user
+Group=front-user
+ExecStart=/usr/bin/http-server /var/www-data/dist/frontend/ -p 80 --proxy http://localhost:8080
+ExecStop=/usr/bin/kill -15 $MAINPID
+ExecReload=/usr/bin/kill -HUP $MAINPID
+Restart=always
+StandardOutput=append:/logs/out-front.log
+StandardError=append:/logs/out-front-error.log
+
+[Install]
+WantedBy=multi-user.target

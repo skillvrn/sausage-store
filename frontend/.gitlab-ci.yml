@@ -1,0 +1,97 @@
+cache:
+  key: $CI_COMMIT_REF_NAME-FRONT-$VERSION
+  paths:
+    - frontend/dist/frontend
+
+variables:
+  FRONT_ART_ADDRESS: $NEXUS_REPO_URL/sausage-store-danil-kuznetsov-frontend/$VERSION/sausage-store-$VERSION.tar.gz
+
+stages:
+  - build
+  - test
+  - release
+  - notify
+  - deploy
+
+build-frontend-code-job: # сборка фронтенда
+  stage: build
+  cache:
+    key: $CI_COMMIT_REF_NAME-FRONT-$VERSION
+    paths:
+      - frontend/dist/frontend
+  script:
+    - cd frontend
+    - npm install        # подтягиваем зависимости
+    - npm run build
+
+sonarqube-frontend-sast:       # SAST тест от SonarQube
+  stage: test
+  image: sonarsource/sonar-scanner-cli:latest         # образ
+  script:
+    - cd frontend
+    - >
+      sonar-scanner
+      -Dsonar.qualitygate.wait=true
+      -Dsonar.projectName=${SONAR_PROJECT_NAME_FRONT}
+      -Dsonar.projectKey=${SONAR_PROJECT_KEY_FRONT}
+      -Dsonar.sources=.
+      -Dsonar.host.url=${SONAR_URL}
+      -Dsonar.login=${SAUSAGE_STORE_14_FRONT_TOKEN}
+  needs:
+    - build-frontend-code-job   # если успешно собрали фронт
+
+upload-frontend-release:
+  stage: release
+  cache:
+    key: $CI_COMMIT_REF_NAME-FRONT-$VERSION
+    paths:
+      - frontend/dist/frontend
+  needs:
+    - build-frontend-code-job
+    - sonarqube-frontend-sast
+  script:
+    - cd frontend/dist/
+    - tar czvf sausage-store-${VERSION}.tar.gz frontend
+    - curl -v -u "${NEXUS_REPO_USER}:${NEXUS_REPO_PASS}" --upload-file sausage-store-${VERSION}.tar.gz ${NEXUS_REPO_URL}/sausage-store-danil-kuznetsov-frontend/${VERSION}/sausage-store-${VERSION}.tar.gz
+
+telegram-notification-frontend:
+  stage: notify
+  script:
+    - 'curl -X POST -H "Content-Type: application/json"
+      -d "{\"chat_id\": \"-1001823350512\", \"parse_mode\":\"markdown\",
+      \"text\": \"\uD83D\uDE80 Вышла новая версия sausage-store-danil-kuznetsov-frontend сосисочной - $VERSION.\n
+      \uD83D\uDD3D Скачать frontend можно по ссылке - [$FRONT_ART_ADDRESS]($FRONT_ART_ADDRESS).\"}"
+      https://api.telegram.org/$TELEGRAM_BOT_TOKEN/sendMessage'
+  needs:
+    - build-frontend-code-job   # если успешно собрали фронт
+    - upload-frontend-release   # если успешно залили артифакт в Nexus
+  rules:
+    - if: $CI_COMMIT_TITLE =~ /send notification/   # если заголовок коммита содержит фразу "send notification"
+
+deploy-frontend:
+  stage: deploy
+  before_script:
+    #устанавливаем ssh-agent для удобства аутентификации по ssh
+    - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    #сохраняем сгенеренный ранее приватный ключ для раннера
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 600 ~/.ssh
+    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - scp ./frontend/sausage-store-frontend.service ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/sausage-store-frontend.service
+    - scp ./frontend/deploy-frontend.sh ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/deploy-frontend.sh
+    - ssh ${DEV_USER}@${DEV_HOST} chmod +x /home/${DEV_USER}/deploy-frontend.sh
+    - >
+      ssh ${DEV_USER}@${DEV_HOST}
+      "export "VERSION=${VERSION}";
+      export "NEXUS_REPO_URL=${NEXUS_REPO_URL}";
+      export "NEXUS_REPO_USER=${NEXUS_REPO_USER}";
+      export "NEXUS_REPO_PASS=${NEXUS_REPO_PASS}";
+      /home/${DEV_USER}/deploy-frontend.sh"
+    - ssh ${DEV_USER}@${DEV_HOST} rm /home/${DEV_USER}/deploy-frontend.sh
+  rules:
+    - if: $CI_COMMIT_TITLE =~ /manual/  # если коммит содержит фразу manual, то 
+      when: manual                      # выполняем деплой по кнопке
