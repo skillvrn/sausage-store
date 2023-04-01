@@ -4,7 +4,8 @@ cache:
     - frontend/dist/frontend
 
 variables:
-  FRONT_ART_ADDRESS: $NEXUS_REPO_URL/sausage-store-danil-kuznetsov-frontend/$VERSION/sausage-store-$VERSION.tar.gz
+  FRONT_ART_ADDRESS: $NEXUS_REPO_URL/$VERSION/sausage-store-$VERSION.tar.gz
+  FRONT_ENV_NAME: production-frontend
 
 stages:
   - build
@@ -52,14 +53,14 @@ upload-frontend-release:
   script:
     - cd frontend/dist/
     - tar czvf sausage-store-${VERSION}.tar.gz frontend
-    - curl -v -u "${NEXUS_REPO_USER}:${NEXUS_REPO_PASS}" --upload-file sausage-store-${VERSION}.tar.gz ${NEXUS_REPO_URL}/sausage-store-danil-kuznetsov-frontend/${VERSION}/sausage-store-${VERSION}.tar.gz
+    - curl -v -u "${NEXUS_REPO_USER}:${NEXUS_REPO_PASS}" --upload-file sausage-store-${VERSION}.tar.gz ${NEXUS_REPO_URL}/${VERSION}/sausage-store-${VERSION}.tar.gz
 
 telegram-notification-frontend:
   stage: notify
   script:
     - 'curl -X POST -H "Content-Type: application/json"
       -d "{\"chat_id\": \"-1001823350512\", \"parse_mode\":\"markdown\",
-      \"text\": \"\uD83D\uDE80 Вышла новая версия sausage-store-danil-kuznetsov-frontend сосисочной - $VERSION.\n
+      \"text\": \"\uD83D\uDE80 Вышла новая версия sausage-store-frontend - $VERSION.\n
       \uD83D\uDD3D Скачать frontend можно по ссылке - [$FRONT_ART_ADDRESS]($FRONT_ART_ADDRESS).\"}"
       https://api.telegram.org/$TELEGRAM_BOT_TOKEN/sendMessage'
   needs:
@@ -70,6 +71,9 @@ telegram-notification-frontend:
 
 deploy-frontend:
   stage: deploy
+  environment:
+    name: ${FRONT_ENV_NAME}
+    url: http://std-014-40.praktikum-services.tech/
   before_script:
     #устанавливаем ssh-agent для удобства аутентификации по ssh
     - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
@@ -92,6 +96,3 @@ deploy-frontend:
       export "NEXUS_REPO_PASS=${NEXUS_REPO_PASS}";
       /home/${DEV_USER}/deploy-frontend.sh"
     - ssh ${DEV_USER}@${DEV_HOST} rm /home/${DEV_USER}/deploy-frontend.sh
-  rules:
-    - if: $CI_COMMIT_TITLE =~ /manual/  # если коммит содержит фразу manual, то 
-      when: manual                      # выполняем деплой по кнопке

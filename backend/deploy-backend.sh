@@ -4,6 +4,7 @@
 set -xe
 # Перезаливаем дескриптор сервиса на ВМ для деплоя
 sudo cp -rf sausage-store-backend.service /etc/systemd/system/sausage-store-backend.service
+echo "Warning!! Check the existence of the file /etc/systemd/system/sausage-store-backend.env"
 # Делаем бэкап старой версии jar-ника
 sudo mv /var/jarservice/sausage-store.jar /var/jarservice/sausage-store-old.jar||true # true" - если команда обвалится - продолжай
 # Скачиваем артефакт новой версии
@@ -19,4 +20,4 @@ sudo chown jarservice:jarusers /var/jarservice/jar-version.txt
 # Обновляем конфиг systemd
 sudo systemctl daemon-reload
 # Перезапускаем сервис сосисочной
-sudo systemctl restart sausage-store-backend
+sudo systemctl start sausage-store-backend

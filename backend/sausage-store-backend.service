@@ -1,25 +1,29 @@
 [Unit]
 Description=Backend for Sausage-store
 After=syslog.target network.target var-jarservice.mount logs.mount
-Documentation=https://gitlab.praktikum-services.ru/std-014-40/sausage-store
 
 [Service]
 Type=simple
 User=jarservice
 Group=jarusers
+EnvironmentFile=/etc/systemd/system/sausage-store-backend.env
 Environment=REPORT_PATH=/var/www-data/htdocs/
-Environment=LOG_PATH=/log
+Environment=LOG_PATH=/opt/log/
 WorkingDirectory=/var/jarservice
 PIDFile=/var/jarservice/sausage-store.pid
-StandardOutput=file:/logs/out.log
-StandardError=append:/logs/out-error.log
+StandardOutput=file:/opt/log/sausage-store-backend.log
+StandardError=append:/opt/log/sausage-store-backend.log
 Restart=always
 ExecStart=/usr/bin/java \
 -Dmyserver.basePath='/var/jarservice' \
 -Dmyserver.bindAddr='127.0.0.1' \
 -Dmyserver.bindPort='8080' \
 -Dmyserver.hostName='std-014-40.praktikum-services.tech' \
--jar '/var/jarservice/sausage-store.jar'
+-jar '/var/jarservice/sausage-store.jar' \
+--spring.datasource.url=jdbc:postgresql://${PGSQL_URL}:6432/${PGSQL_DB} \
+--spring.datasource.username=${PGSQL_USER} \
+--spring.datasource.password=${PGSQL_PASS} \
+--spring.flyway.enabled=false
 ExecStop=/usr/bin/kill -15 $MAINPID
 ExecReload=/usr/bin/kill -HUP $MAINPID
 SuccessExitStatus=143

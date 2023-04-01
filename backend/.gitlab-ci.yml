@@ -1,12 +1,13 @@
 cache:
-  key: $CI_COMMIT_REF_NAME-BACK-$VERSION
+  key: ${CI_COMMIT_REF_NAME}-BACK-${VERSION}
   paths:
     - ${CI_PROJECT_DIR}/.m2/repository  # для хранения зависимостей бэкенда
 
 variables:
   MAVEN_REPO_PATH: ${CI_PROJECT_DIR}/.m2/repository
-  BACK_ART_ADDRESS: $NEXUS_REPO_URL/sausage-store-kuznetsov-danil-backend/com/yandex/practicum/devops/sausage-store/$VERSION/sausage-store-$VERSION.jar
+  BACK_ART_ADDRESS: ${NEXUS_REPO_URL}/$VERSION/sausage-store-${VERSION}.jar
   JAVA_OPTS: -XX:MaxRAMPercentage=90 # для того, чтобы Maven не съел всю свободную оперативку
+  BACK_ENV_NAME: production-backend
 
 stages:
   - build
@@ -21,7 +22,7 @@ include:
 build-backend-code-job:  # сборка бэкэнда
   stage: build
   cache:
-    key: $CI_COMMIT_REF_NAME-BACK-$VERSION
+    key: ${CI_COMMIT_REF_NAME}-BACK-${VERSION}
     paths:
       - ${CI_PROJECT_DIR}/.m2/repository
   script:
@@ -35,14 +36,14 @@ spotbugs-sast:                # SAST тест от GitLab CI
     COMPILE: "false"
     SAST_JAVA_VERSION: 17
   cache:
-    key: $CI_COMMIT_REF_NAME-BACK-$VERSION
+    key: ${CI_COMMIT_REF_NAME}-BACK-${VERSION}
     paths:
       - ${CI_PROJECT_DIR}/.m2/repository
 
 upload-backend-release:   # доставка бэкенда
   stage: release
   cache:
-    key: $CI_COMMIT_REF_NAME-BACK-$VERSION
+    key: ${CI_COMMIT_REF_NAME}-BACK-${VERSION}
     paths:
       - ${CI_PROJECT_DIR}/.m2/repository
   needs:
@@ -57,7 +58,7 @@ telegram-notification-backend:
   script:
     - 'curl -X POST -H "Content-Type: application/json"
       -d "{\"chat_id\": \"-1001823350512\", \"parse_mode\":\"markdown\",
-      \"text\": \"\uD83D\uDE80 Вышла новая версия sausage-store-kuznetsov-danil-backend сосисочной - $VERSION.\n
+      \"text\": \"\uD83D\uDE80 Вышла новая версия sausage-store-backend - $VERSION.\n
       \uD83D\uDD3D Скачать backend можно по ссылке - [$BACK_ART_ADDRESS]($BACK_ART_ADDRESS).\"}"
       https://api.telegram.org/$TELEGRAM_BOT_TOKEN/sendMessage'
   needs:
@@ -68,15 +69,18 @@ telegram-notification-backend:
 
 deploy-backend:
   stage: deploy
+  environment:
+    name: ${BACK_ENV_NAME}
+    url: http://std-014-40.praktikum-services.tech/
   before_script:
     #устанавливаем ssh-agent для удобства аутентификации по ssh
     - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
     - eval $(ssh-agent -s)
     #сохраняем сгенеренный ранее приватный ключ для раннера
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - echo "${SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add -
     - mkdir -p ~/.ssh
     - chmod 600 ~/.ssh
-    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+    - echo "${SSH_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
     - scp ./backend/sausage-store-backend.service ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/sausage-store-backend.service

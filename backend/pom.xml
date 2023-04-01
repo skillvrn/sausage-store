@@ -24,6 +24,19 @@
         <jacoco-maven-plugin.version>0.8.7</jacoco-maven-plugin.version>
     </properties>
     <dependencies>
+
+       <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.3.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>8.0.5</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -114,6 +127,19 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-maven-plugin</artifactId>
+                <version>8.0.5</version>
+                <configuration>
+                    <locations>
+                        <location>classpath:db/migration</location>
+                        <user>${env.PGSQL_USER}</user>
+                        <password>${env.PGSQL_PASS}</password>
+                        <url>jdbc:postgresql://${env.PGSQL_URL}:6432/${env.PGSQL_DB}</url>
+                    </locations>
+                </configuration>
+        </plugin>
         </plugins>
     </build>
 
