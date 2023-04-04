@@ -10,9 +10,12 @@ frontend:
     include:
       - "/frontend/.gitlab-ci.yml"
     strategy: depend # depend нужен, если какой-нибудь дочерний пайплайн свалился, мы знали, что общий пайплайн тоже идёт с ошибкой
-  only:
-    changes: # как только происходит изменение в папке frontend, запускается дочерний пайплайн, который лежит в этой папке
-      - frontend/**/*
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - changes:
+        - frontend/*
+      when: always
 
 backend:
   stage: module-pipelines
@@ -20,6 +23,9 @@ backend:
     include:
       - "/backend/.gitlab-ci.yml"
     strategy: depend
-  only:
-    changes:  # как только происходит изменение в папке backend, запускается дочерний пайплайн, который лежит в этой папке
-      - backend/**/*
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - changes:
+        - backend/*
+      when: always
