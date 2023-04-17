@@ -10,6 +10,7 @@ services:
 
 stages:
   - build
+  - test
   - release
   - notify
   - deploy
@@ -29,6 +30,20 @@ build-backend-code-job:
       .
     - docker push ${CI_REGISTRY_IMAGE}/sausage-backend:${VERSION}
 
+sonarqube-backend-sast:
+  stage: test
+  image: maven:3.8-openjdk-16
+  script:
+    - cd backend
+    - >
+      mvn verify sonar:sonar -Dsonar.qualitygate.wait=true
+      -Dsonar.projectName=${SONAR_PROJECT_NAME_BACK}
+      -Dsonar.projectKey=${SONAR_PROJECT_KEY_BACK}
+      -Dsonar.host.url=${SONAR_URL}
+      -Dsonar.login=${SAUSAGE_STORE_14_BACK_TOKEN}
+  needs:
+    - build-backend-code-job
+
 upload-backend-release:
   variables:
     GIT_STRATEGY: none
@@ -36,7 +51,7 @@ upload-backend-release:
   stage: release
   needs:
     - build-backend-code-job
-    - spotbugs-sast
+    - sonarqube-backend-sast
   before_script:
     - until docker info; do sleep 1; done
     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
