@@ -16,6 +16,9 @@ stages:
   - notify
   - deploy
 
+include:
+  - template: Security/SAST.gitlab-ci.yml
+
 build-frontend-code-job:
   stage: build
   image: docker:20.10.12-dind-rootless
