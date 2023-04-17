@@ -1,33 +1,50 @@
-cache:
-  key: $CI_COMMIT_REF_NAME-FRONT-$VERSION
-  paths:
-    - frontend/dist/frontend
-
 variables:
-  FRONT_ART_ADDRESS: $NEXUS_REPO_URL/$VERSION/sausage-store-$VERSION.tar.gz
   FRONT_ENV_NAME: production-frontend
+  DOCKER_HOST: tcp://docker:2376
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_VERIFY: 1
+  DOCKER_CERT_PATH: "${DOCKER_TLS_CERTDIR}/client"
+
+services:
+  - docker:20.10.12-dind-rootless
 
 stages:
   - build
+  - docker-test
   - test
   - release
   - notify
   - deploy
 
-build-frontend-code-job: # сборка фронтенда
+build-frontend-code-job:
   stage: build
-  cache:
-    key: $CI_COMMIT_REF_NAME-FRONT-$VERSION
-    paths:
-      - frontend/dist/frontend
+  image: docker:20.10.12-dind-rootless
+  before_script:
+    - until docker info; do sleep 1; done
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
   script:
     - cd frontend
-    - npm install        # подтягиваем зависимости
-    - npm run build
+    - >
+      docker build
+      --build-arg VERSION=${VERSION}
+      --tag ${CI_REGISTRY_IMAGE}/sausage-frontend:${VERSION}
+      .
+    - docker push ${CI_REGISTRY_IMAGE}/sausage-frontend:${VERSION}
 
-sonarqube-frontend-sast:       # SAST тест от SonarQube
+test-frontend-container:
+  stage: docker-test
+  image: curlimages/curl:7.74.0
+  services:
+    - name: ${CI_REGISTRY_IMAGE}/sausage-frontend:${VERSION}
+      alias: frontend
+  script:
+    - curl http://frontend -i
+  needs:
+    - build-frontend-code-job
+
+sonarqube-frontend-sast:
   stage: test
-  image: sonarsource/sonar-scanner-cli:latest         # образ
+  image: sonarsource/sonar-scanner-cli:latest
   script:
     - cd frontend
     - >
@@ -39,33 +56,36 @@ sonarqube-frontend-sast:       # SAST тест от SonarQube
       -Dsonar.host.url=${SONAR_URL}
       -Dsonar.login=${SAUSAGE_STORE_14_FRONT_TOKEN}
   needs:
-    - build-frontend-code-job   # если успешно собрали фронт
+    - build-frontend-code-job
+    - test-frontend-container
 
 upload-frontend-release:
+  variables:
+    GIT_STRATEGY: none
+  image: docker:20.10.12-dind-rootless
   stage: release
-  cache:
-    key: $CI_COMMIT_REF_NAME-FRONT-$VERSION
-    paths:
-      - frontend/dist/frontend
   needs:
     - build-frontend-code-job
     - sonarqube-frontend-sast
+    - test-frontend-container
+  before_script:
+    - until docker info; do sleep 1; done
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
   script:
-    - cd frontend/dist/
-    - tar czvf sausage-store-${VERSION}.tar.gz frontend
-    - curl -v -u "${NEXUS_REPO_USER}:${NEXUS_REPO_PASS}" --upload-file sausage-store-${VERSION}.tar.gz ${NEXUS_REPO_URL}/${VERSION}/sausage-store-${VERSION}.tar.gz
+    - docker pull ${CI_REGISTRY_IMAGE}/sausage-frontend:${VERSION}
+    - docker tag ${CI_REGISTRY_IMAGE}/sausage-frontend:${VERSION} ${CI_REGISTRY_IMAGE}/sausage-frontend:latest
+    - docker push ${CI_REGISTRY_IMAGE}/sausage-frontend:latest
 
 telegram-notification-frontend:
   stage: notify
   script:
     - 'curl -X POST -H "Content-Type: application/json"
       -d "{\"chat_id\": \"-1001823350512\", \"parse_mode\":\"markdown\",
-      \"text\": \"\uD83D\uDE80 Вышла новая версия sausage-store-frontend - $VERSION.\n
-      \uD83D\uDD3D Скачать frontend можно по ссылке - [$FRONT_ART_ADDRESS]($FRONT_ART_ADDRESS).\"}"
+      \"text\": \"\uD83D\uDE80 Вышла новая версия frontend - $VERSION.\n
+      \uD83D\uDD3D Скачать Docker образ можно в репозитории Gitlab.\"}"
       https://api.telegram.org/$TELEGRAM_BOT_TOKEN/sendMessage'
   needs:
-    - build-frontend-code-job   # если успешно собрали фронт
-    - upload-frontend-release   # если успешно залили артифакт в Nexus
+    - upload-frontend-release
   rules:
     - if: $CI_COMMIT_TITLE =~ /send notification/   # если заголовок коммита содержит фразу "send notification"
 
@@ -75,24 +95,24 @@ deploy-frontend:
     name: ${FRONT_ENV_NAME}
     url: http://std-014-40.praktikum-services.tech/
   before_script:
-    #устанавливаем ssh-agent для удобства аутентификации по ssh
     - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
     - eval $(ssh-agent -s)
-    #сохраняем сгенеренный ранее приватный ключ для раннера
     - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
     - mkdir -p ~/.ssh
     - chmod 600 ~/.ssh
     - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
-    - scp ./frontend/sausage-store-frontend.service ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/sausage-store-frontend.service
     - scp ./frontend/deploy-frontend.sh ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/deploy-frontend.sh
     - ssh ${DEV_USER}@${DEV_HOST} chmod +x /home/${DEV_USER}/deploy-frontend.sh
     - >
       ssh ${DEV_USER}@${DEV_HOST}
       "export "VERSION=${VERSION}";
-      export "NEXUS_REPO_URL=${NEXUS_REPO_URL}";
-      export "NEXUS_REPO_USER=${NEXUS_REPO_USER}";
-      export "NEXUS_REPO_PASS=${NEXUS_REPO_PASS}";
+      export "FRONTEND_REGISTRY_USER"=${CI_REGISTRY_USER};
+      export "FRONTEND_REGISTRY_PASSWORD"=${CI_REGISTRY_PASSWORD};
+      export "FRONTEND_REGISTRY"=${CI_REGISTRY};
+      export "FRONTEND_REGISTRY_IMAGE"=${CI_REGISTRY_IMAGE};
       /home/${DEV_USER}/deploy-frontend.sh"
     - ssh ${DEV_USER}@${DEV_HOST} rm /home/${DEV_USER}/deploy-frontend.sh
+  needs:
+    - upload-frontend-release
