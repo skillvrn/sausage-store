@@ -10,6 +10,8 @@ services:
 
 stages:
   - build
+  - docker-test
+  - test
   - release
   - notify
   - deploy
@@ -28,6 +30,17 @@ build-frontend-code-job:
       --tag ${CI_REGISTRY_IMAGE}/sausage-frontend:${VERSION}
       .
     - docker push ${CI_REGISTRY_IMAGE}/sausage-frontend:${VERSION}
+
+test-frontend-container:
+  stage: docker-test
+  image: curlimages/curl:7.74.0
+  services:
+    - name: ${CI_REGISTRY_IMAGE}/sausage-frontend:${VERSION}
+      alias: frontend
+  script:
+    - curl http://frontend -i
+  needs:
+    - build-frontend-code-job
 
 sonarqube-frontend-sast:
   stage: test
