@@ -184,3 +184,4 @@ buildNumber.properties
 # Visual Studio Code
 .vscode/*
 sausage-store-backend.env
+.env
