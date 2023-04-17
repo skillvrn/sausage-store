@@ -1,69 +1,60 @@
-cache:
-  key: ${CI_COMMIT_REF_NAME}-BACK-${VERSION}
-  paths:
-    - ${CI_PROJECT_DIR}/.m2/repository  # для хранения зависимостей бэкенда
-
 variables:
-  MAVEN_REPO_PATH: ${CI_PROJECT_DIR}/.m2/repository
-  BACK_ART_ADDRESS: ${NEXUS_REPO_URL}/$VERSION/sausage-store-${VERSION}.jar
-  JAVA_OPTS: -XX:MaxRAMPercentage=90 # для того, чтобы Maven не съел всю свободную оперативку
   BACK_ENV_NAME: production-backend
+  DOCKER_HOST: tcp://docker:2376
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_VERIFY: 1
+  DOCKER_CERT_PATH: "${DOCKER_TLS_CERTDIR}/client"
+
+services:
+  - docker:20.10.12-dind-rootless
 
 stages:
   - build
-  - test
   - release
   - notify
   - deploy
 
-include:
-  - template: Security/SAST.gitlab-ci.yml   # для проверки кода тестами от Gitlab CI
-
-build-backend-code-job:  # сборка бэкэнда
+build-backend-code-job:
   stage: build
-  cache:
-    key: ${CI_COMMIT_REF_NAME}-BACK-${VERSION}
-    paths:
-      - ${CI_PROJECT_DIR}/.m2/repository
+  image: docker:20.10.12-dind-rootless
+  before_script:
+    - until docker info; do sleep 1; done
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
   script:
     - cd backend
-    - mvn package -Dversion.application=${VERSION} -Dmaven.repo.local=${MAVEN_REPO_PATH}     # сборка проекта, версия сборки
+    - >
+      docker build
+      --build-arg VERSION=${VERSION}
+      --tag ${CI_REGISTRY_IMAGE}/sausage-backend:${VERSION}
+      .
+    - docker push ${CI_REGISTRY_IMAGE}/sausage-backend:${VERSION}
 
-spotbugs-sast:                # SAST тест от GitLab CI
-  dependencies:
-    - build-backend-code-job
+upload-backend-release:
   variables:
-    COMPILE: "false"
-    SAST_JAVA_VERSION: 17
-  cache:
-    key: ${CI_COMMIT_REF_NAME}-BACK-${VERSION}
-    paths:
-      - ${CI_PROJECT_DIR}/.m2/repository
-
-upload-backend-release:   # доставка бэкенда
+    GIT_STRATEGY: none
+  image: docker:20.10.12-dind-rootless
   stage: release
-  cache:
-    key: ${CI_COMMIT_REF_NAME}-BACK-${VERSION}
-    paths:
-      - ${CI_PROJECT_DIR}/.m2/repository
   needs:
     - build-backend-code-job
     - spotbugs-sast
+  before_script:
+    - until docker info; do sleep 1; done
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
   script:
-    - cd backend
-    - mvn deploy -DskipTests -Dversion.application=${VERSION} -Dmaven.repo.local=${MAVEN_REPO_PATH} -s settings.xml
+    - docker pull ${CI_REGISTRY_IMAGE}/sausage-backend:${VERSION}
+    - docker tag ${CI_REGISTRY_IMAGE}/sausage-backend:${VERSION} ${CI_REGISTRY_IMAGE}/sausage-backend:latest
+    - docker push ${CI_REGISTRY_IMAGE}/sausage-backend:latest
 
 telegram-notification-backend:
   stage: notify
   script:
     - 'curl -X POST -H "Content-Type: application/json"
       -d "{\"chat_id\": \"-1001823350512\", \"parse_mode\":\"markdown\",
-      \"text\": \"\uD83D\uDE80 Вышла новая версия sausage-store-backend - $VERSION.\n
-      \uD83D\uDD3D Скачать backend можно по ссылке - [$BACK_ART_ADDRESS]($BACK_ART_ADDRESS).\"}"
+      \"text\": \"\uD83D\uDE80 Вышла новая версия backend - $VERSION.\n
+      \uD83D\uDD3D Скачать docker образ можно в репозитории Gitlab.\"}"
       https://api.telegram.org/$TELEGRAM_BOT_TOKEN/sendMessage'
   needs:
-    - build-backend-code-job    # если успешно собрали бэк
-    - upload-backend-release    # если успешно залили артифакт на Nexus
+    - upload-backend-release
   rules:
     - if: $CI_COMMIT_TITLE =~ /send notification/   # если заголовок коммита содержит фразу "send notification"
 
@@ -73,32 +64,28 @@ deploy-backend:
     name: ${BACK_ENV_NAME}
     url: http://std-014-40.praktikum-services.tech/
   before_script:
-    #устанавливаем ssh-agent для удобства аутентификации по ssh
     - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
     - eval $(ssh-agent -s)
-    #сохраняем сгенеренный ранее приватный ключ для раннера
     - echo "${SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add -
     - mkdir -p ~/.ssh
     - chmod 600 ~/.ssh
     - echo "${SSH_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
-    - scp ./backend/sausage-store-backend.service ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/sausage-store-backend.service
     - scp ./backend/deploy-backend.sh ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/deploy-backend.sh
     - ssh ${DEV_USER}@${DEV_HOST} chmod +x /home/${DEV_USER}/deploy-backend.sh
     - >
       ssh ${DEV_USER}@${DEV_HOST}
       "export "VERSION=${VERSION}";
-      export "NEXUS_REPO_URL=${NEXUS_REPO_URL}";
-      export "NEXUS_REPO_USER=${NEXUS_REPO_USER}";
-      export "NEXUS_REPO_PASS=${NEXUS_REPO_PASS}";
-      export "PGSQL_URL"=${PGSQL_URL};
-      export "PGSQL_DB"=${PGSQL_DB};
-      export "PGSQL_USER"=${PGSQL_USER};
-      export "PGSQL_PASS"=${PGSQL_PASS};
-      export "MONGO_USER"=${MONGO_USER};
-      export "MONGO_PASSWORD"=${MONGO_PASSWORD};
-      export "MONGO_HOST"=${MONGO_HOST};
-      export "MONGO_DATABASE"=${MONGO_DATABASE};
+      export "SPRING_DATASOURCE_URL"=${PGSQL_DATASOURCE};
+      export "SPRING_DATASOURCE_USERNAME"=${PGSQL_USER};
+      export "SPRING_DATASOURCE_PASSWORD"=${PGSQL_PASS};
+      export "SPRING_DATA_MONGODB_URI"=${MONGO_DATA};
+      export "BACKEND_REGISTRY_USER"=${CI_REGISTRY_USER};
+      export "BACKEND_REGISTRY_PASSWORD"=${CI_REGISTRY_PASSWORD};
+      export "BACKEND_REGISTRY"=${CI_REGISTRY};
+      export "BACKEND_REGISTRY_IMAGE"=${CI_REGISTRY_IMAGE};
       /home/${DEV_USER}/deploy-backend.sh"
     - ssh ${DEV_USER}@${DEV_HOST} rm /home/${DEV_USER}/deploy-backend.sh
+  needs:
+    - upload-backend-release
