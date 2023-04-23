@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.5.0</version>
+        <version>2.6.14</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.yandex.practicum.devops</groupId>
@@ -17,31 +17,24 @@
         <java.version>16</java.version>
         <sonar.projectKey>test_manual</sonar.projectKey>
         <sonar.qualitygate.wait>true</sonar.qualitygate.wait>
+        <spring-cloud.version>2021.0.0</spring-cloud.version>
         <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
         <sonar.dynamicAnalysis>reuseReports</sonar.dynamicAnalysis>
         <sonar.jacoco.reportPath>${project.basedir}/../target/jacoco.exec</sonar.jacoco.reportPath>
         <sonar.language>java</sonar.language>
         <jacoco-maven-plugin.version>0.8.7</jacoco-maven-plugin.version>
     </properties>
-    <dependencies>
 
+    <dependencies>
        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-mongodb</artifactId>
         </dependency>
-
        <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <version>42.5.4</version>
         </dependency>
-
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
-            <version>8.0.5</version>
-        </dependency>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -85,10 +78,14 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>8.0.5</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-log4j2</artifactId>
         </dependency>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -104,8 +101,24 @@
             <artifactId>junit-vintage-engine</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-vault-config</artifactId>
+        </dependency>
     </dependencies>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+    
     <build>
         <plugins>
             <plugin>
@@ -139,22 +152,9 @@
                 <configuration>
                     <locations>
                         <location>classpath:db/migration</location>
-                        <user>${env.PGSQL_USER}</user>
-                        <password>${env.PGSQL_PASS}</password>
-                        <url>jdbc:postgresql://${env.PGSQL_URL}:6432/${env.PGSQL_DB}</url>
                     </locations>
                 </configuration>
         </plugin>
         </plugins>
     </build>
-
-    <!-- connect Nexus repository -->
-    <distributionManagement>
-        <repository>
-            <id>sausage-store</id>
-            <name>sausage-store-kuznetsov-danil-backend</name>
-            <url>${env.NEXUS_REPO_URL}/sausage-store-kuznetsov-danil-backend/</url>
-        </repository>
-    </distributionManagement>
-
 </project>

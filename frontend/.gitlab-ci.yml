@@ -4,6 +4,7 @@ variables:
   DOCKER_TLS_CERTDIR: "/certs"
   DOCKER_TLS_VERIFY: 1
   DOCKER_CERT_PATH: "${DOCKER_TLS_CERTDIR}/client"
+  SAST_JAVA_VERSION: 17
 
 services:
   - docker:20.10.12-dind-rootless
@@ -24,9 +25,12 @@ build-frontend-code-job:
   image: docker:20.10.12-dind-rootless
   before_script:
     - until docker info; do sleep 1; done
-    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    # сначала логинимся на hub.docker.com под своей собственной учеткой, чтобы не превышать лимиты pull request'ов
+    - docker login -u ${DOCKERHUB_USER} -p ${DOCKERHUB_PASS}
   script:
     - cd frontend
+    # а теперь используем репозиторий в gitlab'е, переменные генерятся гитлабом
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
     - >
       docker build
       --build-arg VERSION=${VERSION}
@@ -84,8 +88,8 @@ telegram-notification-frontend:
   script:
     - 'curl -X POST -H "Content-Type: application/json"
       -d "{\"chat_id\": \"-1001823350512\", \"parse_mode\":\"markdown\",
-      \"text\": \"\uD83D\uDE80 Вышла новая версия frontend - $VERSION.\n
-      \uD83D\uDD3D Скачать Docker образ можно в репозитории Gitlab.\"}"
+      \"text\": \"\uD83D\uDE80 Вышла новая версия frontend сосисочной - $VERSION.\n
+      \uD83D\uDD3D Скачать docker image можно в репозитории Gitlab CI.\"}"
       https://api.telegram.org/$TELEGRAM_BOT_TOKEN/sendMessage'
   needs:
     - upload-frontend-release
@@ -94,16 +98,17 @@ telegram-notification-frontend:
 
 deploy-frontend:
   stage: deploy
+  image: alpine:3.15.0
   environment:
     name: ${FRONT_ENV_NAME}
     url: http://std-014-40.praktikum-services.tech/
   before_script:
-    - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
+    - apk add openssh-client bash
     - eval $(ssh-agent -s)
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - echo "${SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add -
     - mkdir -p ~/.ssh
     - chmod 600 ~/.ssh
-    - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+    - echo "${SSH_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
   script:
     - scp ./frontend/deploy-frontend.sh ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/deploy-frontend.sh
