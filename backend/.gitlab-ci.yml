@@ -4,6 +4,7 @@ variables:
   DOCKER_TLS_CERTDIR: "/certs"
   DOCKER_TLS_VERIFY: 1
   DOCKER_CERT_PATH: "${DOCKER_TLS_CERTDIR}/client"
+  SAST_JAVA_VERSION: 17
 
 services:
   - docker:20.10.12-dind-rootless
@@ -23,9 +24,12 @@ build-backend-code-job:
   image: docker:20.10.12-dind-rootless
   before_script:
     - until docker info; do sleep 1; done
-    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    # сначала логинимся на hub.docker.com под своей собственной учеткой, чтобы не превышать лимиты pull request'ов
+    - docker login -u ${DOCKERHUB_USER} -p ${DOCKERHUB_PASS}
   script:
     - cd backend
+    # а теперь используем репозиторий в gitlab'е, переменные генерятся гитлабом
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
     - >
       docker build
       --build-arg VERSION=${VERSION}
@@ -68,8 +72,8 @@ telegram-notification-backend:
   script:
     - 'curl -X POST -H "Content-Type: application/json"
       -d "{\"chat_id\": \"-1001823350512\", \"parse_mode\":\"markdown\",
-      \"text\": \"\uD83D\uDE80 Вышла новая версия backend - $VERSION.\n
-      \uD83D\uDD3D Скачать docker образ можно в репозитории Gitlab.\"}"
+      \"text\": \"\uD83D\uDE80 Вышла новая версия backend сосисочной - $VERSION.\n
+      \uD83D\uDD3D Скачать docker image можно в репозитории Gitlab CI.\"}"
       https://api.telegram.org/$TELEGRAM_BOT_TOKEN/sendMessage'
   needs:
     - upload-backend-release
@@ -78,11 +82,12 @@ telegram-notification-backend:
 
 deploy-backend:
   stage: deploy
+  image: vault:1.11.3
   environment:
     name: ${BACK_ENV_NAME}
     url: http://std-014-40.praktikum-services.tech/
   before_script:
-    - 'command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )'
+    - apk add openssh-client bash
     - eval $(ssh-agent -s)
     - echo "${SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add -
     - mkdir -p ~/.ssh
@@ -92,17 +97,18 @@ deploy-backend:
   script:
     - scp ./backend/deploy-backend.sh ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/deploy-backend.sh
     - ssh ${DEV_USER}@${DEV_HOST} chmod +x /home/${DEV_USER}/deploy-backend.sh
+    - export VAULT_TOKEN="$(vault write -field=token auth/jwt/login role=sausage-store jwt=${CI_JOB_JWT})"
     - >
       ssh ${DEV_USER}@${DEV_HOST}
       "export "VERSION=${VERSION}";
-      export "SPRING_DATASOURCE_URL"=${PGSQL_DATASOURCE};
-      export "SPRING_DATASOURCE_USERNAME"=${PGSQL_USER};
-      export "SPRING_DATASOURCE_PASSWORD"=${PGSQL_PASS};
-      export "SPRING_DATA_MONGODB_URI"=${MONGO_DATA};
-      export "BACKEND_REGISTRY_USER"=${CI_REGISTRY_USER};
-      export "BACKEND_REGISTRY_PASSWORD"=${CI_REGISTRY_PASSWORD};
-      export "BACKEND_REGISTRY"=${CI_REGISTRY};
-      export "BACKEND_REGISTRY_IMAGE"=${CI_REGISTRY_IMAGE};
+      export "SPRING_DATASOURCE_URL=${PGSQL_DATASOURCE}";
+      export "SPRING_DATASOURCE_USERNAME=$(vault kv get -field=spring.datasource.username secret/sausage-store)";
+      export "SPRING_DATASOURCE_PASSWORD=$(vault kv get -field=spring.datasource.password secret/sausage-store)";
+      export "SPRING_DATA_MONGODB_URI=$(vault kv get -field=spring.data.mongodb.uri secret/sausage-store)";
+      export "BACKEND_REGISTRY_USER=${CI_REGISTRY_USER}";
+      export "BACKEND_REGISTRY_PASSWORD=${CI_REGISTRY_PASSWORD}";
+      export "BACKEND_REGISTRY=${CI_REGISTRY}";
+      export "BACKEND_REGISTRY_IMAGE=${CI_REGISTRY_IMAGE}";
       /home/${DEV_USER}/deploy-backend.sh"
     - ssh ${DEV_USER}@${DEV_HOST} rm /home/${DEV_USER}/deploy-backend.sh
   needs:

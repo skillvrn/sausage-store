@@ -12,7 +12,7 @@ public class ReportGeneratorTask {
     Logger reporter = LoggerFactory.getLogger("ReportGenerator");
     Logger logger = LoggerFactory.getLogger(ReportGeneratorTask.class);
 
-    @Scheduled(fixedDelay = 60000)
+    @Scheduled(fixedDelay = 300000)
     public void generate() {
         logger.info("Generate report");
         reporter.info("VERY IMPORTANT REPORT START");

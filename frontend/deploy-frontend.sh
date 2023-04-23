@@ -1,6 +1,5 @@
 #!/bin/bash
 set +e
-docker network create -d bridge sausage_network || true
 docker login -u ${FRONTEND_REGISTRY_USER} -p ${FRONTEND_REGISTRY_PASSWORD} ${FRONTEND_REGISTRY}
 docker pull ${FRONTEND_REGISTRY_IMAGE}/sausage-frontend:latest
 docker rm -f frontend || true
