@@ -1,10 +1,5 @@
 variables:
   FRONT_ENV_NAME: production-frontend
-  DOCKER_HOST: tcp://docker:2376
-  DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_TLS_VERIFY: 1
-  DOCKER_CERT_PATH: "${DOCKER_TLS_CERTDIR}/client"
-  SAST_JAVA_VERSION: 17
 
 services:
   - docker:20.10.12-dind-rootless
@@ -18,7 +13,7 @@ stages:
   - deploy
 
 include:
-  - template: Security/SAST.gitlab-ci.yml
+  remote: 'https://gitlab.com/gitlab-org/gitlab/-/raw/2851f4d5/lib/gitlab/ci/templates/Jobs/SAST.latest.gitlab-ci.yml'
 
 build-frontend-code-job:
   stage: build
@@ -62,6 +57,7 @@ sonarqube-frontend-sast:
       -Dsonar.sources=.
       -Dsonar.host.url=${SONAR_URL}
       -Dsonar.login=${SAUSAGE_STORE_14_FRONT_TOKEN}
+      -Dsonar.projectVersion=${VERSION}
   needs:
     - build-frontend-code-job
     - test-frontend-container
@@ -110,9 +106,10 @@ deploy-frontend:
     - chmod 600 ~/.ssh
     - echo "${SSH_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
-  script:
     - scp ./frontend/deploy-frontend.sh ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/deploy-frontend.sh
     - ssh ${DEV_USER}@${DEV_HOST} chmod +x /home/${DEV_USER}/deploy-frontend.sh
+    - scp ./docker-compose.yml ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/docker-compose.yml
+  script:
     - >
       ssh ${DEV_USER}@${DEV_HOST}
       "export "VERSION=${VERSION}";
