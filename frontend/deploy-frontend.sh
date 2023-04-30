@@ -1,12 +1,9 @@
 #!/bin/bash
 set +e
+cat > frontend.env <<EOF
+FRONTEND_REGISTRY_IMAGE=${FRONTEND_REGISTRY_IMAGE}
+EOF
 docker login -u ${FRONTEND_REGISTRY_USER} -p ${FRONTEND_REGISTRY_PASSWORD} ${FRONTEND_REGISTRY}
-docker pull ${FRONTEND_REGISTRY_IMAGE}/sausage-frontend:latest
-docker rm -f frontend || true
+docker-compose --env-file frontend.env pull frontend
 set -e
-docker run -d \
-    --name frontend \
-    --network=sausage_network \
-    --restart always \
-    -p 80:80 \
-    ${FRONTEND_REGISTRY_IMAGE}/sausage-frontend:latest
+docker-compose up --force-recreate --remove-orphans -d frontend

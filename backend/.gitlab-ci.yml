@@ -1,10 +1,5 @@
 variables:
   BACK_ENV_NAME: production-backend
-  DOCKER_HOST: tcp://docker:2376
-  DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_TLS_VERIFY: 1
-  DOCKER_CERT_PATH: "${DOCKER_TLS_CERTDIR}/client"
-  SAST_JAVA_VERSION: 17
 
 services:
   - docker:20.10.12-dind-rootless
@@ -17,7 +12,7 @@ stages:
   - deploy
 
 include:
-  - template: Security/SAST.gitlab-ci.yml
+  remote: 'https://gitlab.com/gitlab-org/gitlab/-/raw/2851f4d5/lib/gitlab/ci/templates/Jobs/SAST.latest.gitlab-ci.yml'
 
 build-backend-code-job:
   stage: build
@@ -48,6 +43,7 @@ sonarqube-backend-sast:
       -Dsonar.projectKey=${SONAR_PROJECT_KEY_BACK}
       -Dsonar.host.url=${SONAR_URL}
       -Dsonar.login=${SAUSAGE_STORE_14_BACK_TOKEN}
+      -Dversion.application=${VERSION}
   needs:
     - build-backend-code-job
 
@@ -94,17 +90,18 @@ deploy-backend:
     - chmod 600 ~/.ssh
     - echo "${SSH_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
     - chmod 644 ~/.ssh/known_hosts
-  script:
     - scp ./backend/deploy-backend.sh ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/deploy-backend.sh
     - ssh ${DEV_USER}@${DEV_HOST} chmod +x /home/${DEV_USER}/deploy-backend.sh
+    - scp ./docker-compose.yml ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/docker-compose.yml
+  script:
     - export VAULT_TOKEN="$(vault write -field=token auth/jwt/login role=sausage-store jwt=${CI_JOB_JWT})"
     - >
       ssh ${DEV_USER}@${DEV_HOST}
       "export "VERSION=${VERSION}";
+      export "VAULT_ADDR=${VAULT_ADDR}";
       export "SPRING_DATASOURCE_URL=${PGSQL_DATASOURCE}";
-      export "SPRING_DATASOURCE_USERNAME=$(vault kv get -field=spring.datasource.username secret/sausage-store)";
-      export "SPRING_DATASOURCE_PASSWORD=$(vault kv get -field=spring.datasource.password secret/sausage-store)";
-      export "SPRING_DATA_MONGODB_URI=$(vault kv get -field=spring.data.mongodb.uri secret/sausage-store)";
+      export "SPRING_DATASOURCE_USERNAME=${PGSQL_USER}";
+      export "SPRING_DATASOURCE_PASSWORD=${PGSQL_PASS}";
       export "BACKEND_REGISTRY_USER=${CI_REGISTRY_USER}";
       export "BACKEND_REGISTRY_PASSWORD=${CI_REGISTRY_PASSWORD}";
       export "BACKEND_REGISTRY=${CI_REGISTRY}";
