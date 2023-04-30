@@ -1,0 +1,117 @@
+variables:
+  BACK_REPORT_ENV_NAME: production-backend-report
+
+services:
+  - docker:20.10.12-dind-rootless
+
+stages:
+  - build
+  - test
+  - release
+  - notify
+  - deploy
+
+include:
+  remote: 'https://gitlab.com/gitlab-org/gitlab/-/raw/2851f4d5/lib/gitlab/ci/templates/Jobs/SAST.latest.gitlab-ci.yml'
+
+build-backend-report-code-job:
+  stage: build
+  image: docker:20.10.12-dind-rootless
+  before_script:
+    - until docker info; do sleep 1; done
+    - docker login -u ${DOCKERHUB_USER} -p ${DOCKERHUB_PASS}
+  script:
+    - cd backend-report
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - >
+      docker build
+      --build-arg VERSION=${VERSION}
+      --tag ${CI_REGISTRY_IMAGE}/sausage-backend-report:${VERSION}
+      .
+    - docker push ${CI_REGISTRY_IMAGE}/sausage-backend-report:${VERSION}
+
+backend-report-test:
+  stage: test
+  image: golang:latest
+  script:
+    - cd backend-report
+    - go test ./app/services/health
+  needs:
+    - build-backend-report-code-job
+
+sonarqube-backend-report-sast:
+  stage: test
+  image: sonarsource/sonar-scanner-cli:latest
+  script:
+    - cd backend-report
+    - >
+      sonar-scanner
+      -Dsonar.qualitygate.wait=true
+      -Dsonar.projectName=${SONAR_PROJECT_NAME_REPORTS}
+      -Dsonar.projectKey=${SONAR_PROJECT_KEY_REPORTS}
+      -Dsonar.sources=.
+      -Dsonar.host.url=${SONAR_URL}
+      -Dsonar.login=${SAUSAGE_STORE_14_REPORTS_TOKEN}
+      -Dsonar.projectVersion=${VERSION}
+  needs:
+    - build-backend-report-code-job
+
+upload-backend-report-release:
+  variables:
+    GIT_STRATEGY: none
+  image: docker:20.10.12-dind-rootless
+  stage: release
+  needs:
+    - build-backend-report-code-job
+    - sonarqube-backend-report-sast
+  before_script:
+    - until docker info; do sleep 1; done
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - docker pull ${CI_REGISTRY_IMAGE}/sausage-backend-report:${VERSION}
+    - docker tag ${CI_REGISTRY_IMAGE}/sausage-backend-report:${VERSION} ${CI_REGISTRY_IMAGE}/sausage-backend-report:latest
+    - docker push ${CI_REGISTRY_IMAGE}/sausage-backend-report:latest
+
+telegram-notification-backend-report:
+  stage: notify
+  script:
+    - 'curl -X POST -H "Content-Type: application/json"
+      -d "{\"chat_id\": \"-1001823350512\", \"parse_mode\":\"markdown\",
+      \"text\": \"\uD83D\uDE80 Вышла новая версия backend-report сосисочной - $VERSION.\n
+      \uD83D\uDD3D Скачать docker image можно в репозитории Gitlab CI.\"}"
+      https://api.telegram.org/$TELEGRAM_BOT_TOKEN/sendMessage'
+  needs:
+    - upload-backend-report-release
+  rules:
+    - if: $CI_COMMIT_TITLE =~ /send notification/
+
+deploy-backend-report:
+  stage: deploy
+  image: alpine:3.15.0
+  environment:
+    name: ${BACK_REPORT_ENV_NAME}
+    url: http://std-014-40.praktikum-services.tech/
+  before_script:
+    - apk add openssh-client bash
+    - eval $(ssh-agent -s)
+    - echo "${SSH_PRIVATE_KEY}" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 600 ~/.ssh
+    - echo "${SSH_KNOWN_HOSTS}" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - scp ./backend-report/deploy-backend-report.sh ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/deploy-backend-report.sh
+    - ssh ${DEV_USER}@${DEV_HOST} chmod +x /home/${DEV_USER}/deploy-backend-report.sh
+    - scp ./docker-compose.yml ${DEV_USER}@${DEV_HOST}:/home/${DEV_USER}/docker-compose.yml
+  script:
+    - >
+      ssh ${DEV_USER}@${DEV_HOST}
+      "export "VERSION=${VERSION}";
+      export MONGODB_URI="${MONGODB_URI}";
+      export "BACKEND_REPORT_REGISTRY_USER=${CI_REGISTRY_USER}";
+      export "BACKEND_REPORT_REGISTRY_PASSWORD=${CI_REGISTRY_PASSWORD}";
+      export "BACKEND_REPORT_REGISTRY=${CI_REGISTRY}";
+      export "BACKEND_REPORT_REGISTRY_IMAGE=${CI_REGISTRY_IMAGE}";
+      /home/${DEV_USER}/deploy-backend-report.sh"
+    - ssh ${DEV_USER}@${DEV_HOST} rm /home/${DEV_USER}/deploy-backend-report.sh
+  needs:
+    - upload-backend-report-release
