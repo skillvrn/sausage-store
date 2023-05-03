@@ -4,7 +4,6 @@ services:
 
   backend:
     image: ${BACKEND_REGISTRY_IMAGE}/sausage-backend:latest
-    container_name: backend
     restart: always
     environment:
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
@@ -13,6 +12,7 @@ services:
       SPRING_FLYWAY_BASELINE-ON-MIGRATE: "true"
       SPRING_FLYWAY_ENABLED: "false"
       REPORT_PATH: "./logs"
+      VIRTUAL_HOST: backend
     networks:
       - sausage_network
 
@@ -31,6 +31,10 @@ services:
     restart: always
     ports:
       - "80:80"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    environment:
+      - DEFAULT_HOST=backend
     networks:
       - sausage_network
 
