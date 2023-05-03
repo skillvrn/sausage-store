@@ -12,4 +12,4 @@ EOF
 docker login -u ${BACKEND_REGISTRY_USER} -p ${BACKEND_REGISTRY_PASSWORD} ${BACKEND_REGISTRY}
 docker-compose --env-file backend.env pull backend
 set -e
-docker-compose --env-file backend.env up --force-recreate --remove-orphans -d backend
+docker-compose --env-file backend.env up --force-recreate --remove-orphans --scale backend=2 -d backend
