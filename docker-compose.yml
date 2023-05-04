@@ -2,22 +2,40 @@ version: "3.3"
 
 services:
 
-  backend:
+  backend_blue:
     image: ${BACKEND_REGISTRY_IMAGE}/sausage-backend:latest
-    restart: always
+    env_file:
+      - backend.env
+    restart: unless-stopped
     environment:
-      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
-      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
-      SPRING_FLYWAY_BASELINE-ON-MIGRATE: "true"
-      SPRING_FLYWAY_ENABLED: "false"
-      REPORT_PATH: "./logs"
       VIRTUAL_HOST: backend
+    healthcheck:
+      test: curl http://localhost:8080/actuator/health
+      interval: 30s
+      timeout: 10s
+      retries: 6
+    networks:
+      - sausage_network
+  
+  backend_green:
+    image: ${BACKEND_REGISTRY_IMAGE}/sausage-backend:latest
+    env_file:
+      - backend.env
+    restart: unless-stopped
+    environment:
+      VIRTUAL_HOST: backend
+    healthcheck:
+      test: curl http://localhost:8080/actuator/health
+      interval: 30s
+      timeout: 10s
+      retries: 6
     networks:
       - sausage_network
 
   reports:
     image: ${BACKEND_REPORT_REGISTRY_IMAGE}/sausage-backend-report:latest
+    env_file:
+      - reports.env
     container_name: reports
     restart: always
     environment:
@@ -27,6 +45,8 @@ services:
 
   frontend:
     image: ${FRONTEND_REGISTRY_IMAGE}/sausage-frontend:latest
+    env_file:
+      - frontend.env
     container_name: frontend
     restart: always
     ports:
