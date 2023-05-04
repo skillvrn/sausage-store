@@ -8,3 +8,4 @@ docker login -u ${BACKEND_REPORT_REGISTRY_USER} -p ${BACKEND_REPORT_REGISTRY_PAS
 docker-compose --env-file reports.env pull reports
 set -e
 docker-compose --env-file reports.env up --force-recreate --remove-orphans -d reports
+docker image prune -f

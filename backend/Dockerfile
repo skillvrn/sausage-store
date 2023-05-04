@@ -17,7 +17,7 @@ RUN keytool -importcert -file YandexInternalRootCA.crt \
     && rm -rf YandexInternalRootCA.crt \
     && addgroup --system jaruser \
     && adduser -S -s /bin/false -G jaruser jaruser -D -H \
-    && apk add --no-cache dumb-init==1.2.5-r0 \
+    && apk add --no-cache curl dumb-init==1.2.5-r0 \
     && mkdir -m 777 ./logs
 COPY --chown=jaruser:jaruser \
      --from=builder /app/target/sausage-store-${VERSION}.jar ./sausage-store.jar
