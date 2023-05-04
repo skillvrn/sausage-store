@@ -183,5 +183,10 @@ buildNumber.properties
 
 # Visual Studio Code
 .vscode/*
+
+# Sensitive variables
 sausage-store-backend.env
 .env
+backend.env
+frontend.env
+reports.env
